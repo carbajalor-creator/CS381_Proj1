@@ -21,19 +21,6 @@ def getChildren(currState):
         children.append(('R', currState[0] + 1, currState[1]))
     return children
 
-def bfs(start, goal):
-    startTime = time.process_time()
-    if start == goal : 
-        output(0, 0, 'none', 0, 1, time.process_time() - startTime)
-        return 
-    
-    queue = deque()
-    queue.append(start)
-    print(queue)
-    time = time.process_time() - startTime
-    output()
-    return
-
 
 #search methods will track these variables and call output
 #solutionFound is a bool 0 = success 1 = failure, 
@@ -42,7 +29,7 @@ def output(solutionFound, numMoves, sequence, statesRem, maxSize, time):
         print('\nSolution found')
     elif solutionFound == 1:
         print('Solution not found')
-    print(f'The number of moves: {numMoves} \nThe sequence of moves: {sequence} \n')
+    print(f'The number of moves: {numMoves} \nThe sequence of moves: {", ".join(sequence)} \n')
     print (f'The number of states removed: {statesRem} \nThe maximum size of the queue/stack: {maxSize} \nCPU time: {time}' )
 
 
@@ -53,8 +40,45 @@ def findBlank(board):
             if board[row][col] == 0:
                  return row,col
 
+#takes current empty space and coordinates to swap to and creates a new board with the swap
+def swap(board, row, col, newRow, newCol):
+    newBoard = [] 
+    for r in board: 
+        newBoard.append(r[:])
+    newBoard[row][col], newBoard[newRow][newCol] = newBoard[newRow][newCol], newBoard[row][col] 
+    return newBoard
 
+#Breadth first search
+def bfs(start, goal):
+    queue = deque()
+    queue.append((start, [])) #adds start state to queue and creates a list for the path
+    visited = set()
+    visited.add(json.dumps(start))
+    removed = 0
+    maxQueueSize = 1
 
+    #loops until nothing left to explore
+    while len(queue) > 0:
+        maxQueueSize = max(len(queue), maxQueueSize)
+        currentBoard, path = queue.popleft() #explores first in queue
+        removed += 1
+
+        if currentBoard == goal:
+            return 0, path, removed, maxQueueSize
+        #finds empty space and available swaps
+        blankRow, blankCol = findBlank(currentBoard)
+        possibleMoves = getChildren((blankCol,blankRow))
+        #go through moves 
+        for move, newCol, newRow in possibleMoves:
+            newBoard = swap(currentBoard, blankRow, blankCol, newRow, newCol)
+            boardString = json.dumps(newBoard) #converting list of lists to string to add to set
+            if boardString not in visited:
+                visited.add(boardString)
+                newPath = path + [move] 
+                queue.append((newBoard, newPath)) #updates the sequence of moves
+
+    return 1, [], removed, maxQueueSize 
+    
 #Iterative deepening search
 def ids(start, goal, maxDepth=80):
 
@@ -73,10 +97,6 @@ def ids(start, goal, maxDepth=80):
             return result, path, totalRemoved, peakStack
     return "cutoff", "", totalRemoved, peakStack
             
-
-
-
-
 
 #Depth limited search
 def dls(start, goal, limit):
@@ -134,14 +154,20 @@ def main():
 
 
     #as it should look
-    search = input ('Pick a search method by entering a number: \n (1)BFS \n (2)IDS \n (3)BFS & IDS \n (4)DLS \n')
+    search = input ('Pick a search method by entering a number: \n (1)BFS \n (2)IDS \n (3)DLS \n (4)Compare all \n')
 
     #max amount a 4x4 grid can search
     limit = 80 
 
+    #Breadth First Search
     if search == '1' or search == '(1)':
-        #print('You selected Breadth First Search')
-        pass
+        print('You selected Breadth First Search')
+        startTime = time.process_time()
+        status, path, removed, maxSize = bfs(startState, goalState)
+        elapsed = time.process_time() - startTime
+        output(status,len(path), path, removed, maxSize, elapsed)
+
+    #Iterative Deepening Search
     elif search == '2' or search == '(2)':
         #printout 
         print('You selected Iterative Deepening Search')
@@ -153,11 +179,9 @@ def main():
             output(0,len(path), path, removed, maxSize, elapsed)
         else:
             output(1,0,"none",removed, maxSize, elapsed)
-        
+
+    #Depth Limited Search
     elif search == '3' or search == '(3)':
-        print('You selected Breadth First Search & Iterative Deepening Search')
-        dls(startState, goalState, limit)
-    elif search == '4' or search == '(4)':
         #printout
         print('You selected Depth Limited Search') 
         startTime = time.process_time()
@@ -170,8 +194,37 @@ def main():
         else:
             output(1,0,"none",removed, maxSize, elapsed)   
 
+    #comparing all searches    
+    elif search == '4' or search == '(4)':
+        print('You selected to compare all searches')
 
-   
+
+        print('\nBreadth First Search Stats:')
+        startTime1 = time.process_time()
+        status, path, removed, maxSize = bfs(startState, goalState)
+        elapsed1 = time.process_time() - startTime1
+        output(status,len(path), path, removed, maxSize, elapsed1)
+
+        print('\nIterative Deepening Search Stats:')
+        startTime2 = time.process_time()
+        status, path, removed, maxSize = ids(startState, goalState, limit)
+        elapsed2 = time.process_time() - startTime2
+
+        if status == "found":
+            output(0,len(path), path, removed, maxSize, elapsed2)
+        else:
+            output(1,0,"none",removed, maxSize, elapsed2)
+
+        print('Depth Limited Search Stats:') 
+        startTime = time.process_time()
+        status, path, removed, maxSize = dls(startState, goalState, limit)
+        elapsed = time.process_time() - startTime
+        
+        if status == "found":
+            output(0,len(path), path, removed, maxSize, elapsed)
+        else:
+            output(1,0,"none",removed, maxSize, elapsed)   
+
     
 if __name__ == "__main__":
     main()
