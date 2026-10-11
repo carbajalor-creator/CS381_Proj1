@@ -1,4 +1,5 @@
 from collections import deque
+import heapq
 import time
 import json
 #opposite library
@@ -22,6 +23,12 @@ def getChildren(currState):
     return children
 
 
+#make a new function called makeChildren
+def makeChild(board, blankRow, blankCol, newRow, newCol):
+    newBoard = [list(row2) for row2 in board]
+    newBoard[blankRow][blankCol], newBoard[newRow][newCol] = newBoard[newRow][newCol], newBoard[blankRow][blankCol] 
+    return tuple(tuple(row) for row in newBoard)
+
 #search methods will track these variables and call output
 #solutionFound is a bool 0 = success 1 = failure, 
 def output(solutionFound, numMoves, sequence, statesRem, maxSize, time):
@@ -31,6 +38,32 @@ def output(solutionFound, numMoves, sequence, statesRem, maxSize, time):
         print('Solution not found')
     print(f'The number of moves: {numMoves} \nThe sequence of moves: {", ".join(sequence)} \n')
     print (f'The number of states removed: {statesRem} \nThe maximum size of the queue/stack: {maxSize} \nCPU time: {time}' )
+
+
+#is solvable function
+def isSolvable(start, goal):
+    flatS = [t for row in start for t in row]
+    flatG = [t for row in goal for t in row]
+    if sorted(flatS) != sorted(flatG):
+        return False
+    posG = {t: i for i, t in enumerate(flatG)}
+    perm = [posG[t] for t in flatS]
+    #parity of the permutation = (16 - number of cycles) mod 2
+    seen = [False] * 16
+    cycles = 0
+    for i in range(16):
+        if not seen[i]:
+            cycles += 1
+            j = i
+            while not seen[j]:
+                seen[j] = True
+                j = perm[j]
+    permParity = (16 - cycles) % 2
+    #every move is one swap with the blank, so blank distance parity must match
+    r1, c1 = findBlank(start)
+    r2, c2 = findBlank(goal)
+    blankParity = (abs(r1 - r2) + abs(c1 - c2)) % 2
+    return permParity == blankParity
 
 
 #finding empty space on the board
@@ -48,37 +81,84 @@ def swap(board, row, col, newRow, newCol):
     newBoard[row][col], newBoard[newRow][newCol] = newBoard[newRow][newCol], newBoard[row][col] 
     return newBoard
 
-#Breadth first search
-def bfs(start, goal):
-    queue = deque()
-    queue.append((start, [])) #adds start state to queue and creates a list for the path
-    visited = set()
-    visited.add(json.dumps(start))
-    removed = 0
-    maxQueueSize = 1
+#Best first search
+def bestFirst(start, goal,h=lambda x: 0):
 
-    #loops until nothing left to explore
-    while len(queue) > 0:
-        maxQueueSize = max(len(queue), maxQueueSize)
-        currentBoard, path = queue.popleft() #explores first in queue
+
+    #start and goal to a tuple of tuples
+    start = tuple(tuple(row) for row in start)
+    goal = tuple(tuple(row) for row in goal)
+
+    g = {start: 0}                  #best known cost to each generated state
+    parent = {start: None}          #state -> (parent state, move)
+    counter = 0                     #tiebreaker so the heap never compares boards
+    heap = [(h(start), counter, start)]
+    openSet = {start}               #states currently in Open
+    closed = set()   
+
+    # remove is set to zero
+    removed = 0
+    #maxSize is set to 1
+    maxSize = 1
+
+    #while queue is not empty
+    while openSet:
+        #u is set to remove the first state from the queue
+        f, _, board = heapq.heappop(heap)
+
+        if board not in openSet or f!= h(board) + g[board]:
+            continue
+
+        openSet.remove(board)
         removed += 1
 
-        if currentBoard == goal:
-            return 0, path, removed, maxQueueSize
-        #finds empty space and available swaps
-        blankRow, blankCol = findBlank(currentBoard)
-        possibleMoves = getChildren((blankCol,blankRow))
-        #go through moves 
-        for move, newCol, newRow in possibleMoves:
-            newBoard = swap(currentBoard, blankRow, blankCol, newRow, newCol)
-            boardString = json.dumps(newBoard) #converting list of lists to string to add to set
-            if boardString not in visited:
-                visited.add(boardString)
-                newPath = path + [move] 
-                queue.append((newBoard, newPath)) #updates the sequence of moves
+        #if u is equal to the goal state then we have found a solution
+        if board == goal : 
+            path = []
+            while parent[board] is not None:
+                board, move = parent[board]
+                path.append(move)
+            return "found", path[::-1], removed, maxSize
 
-    return 1, [], removed, maxQueueSize 
-    
+        closed.add(board)
+
+        # otherwise fine the blank position
+        blankRow, blankCol = findBlank(board)
+
+        # for each legal move, state, new row, and new col from the blank
+        for move, newCol, newRow in getChildren((blankCol, blankRow)):
+
+            visitedState = makeChild(board, blankRow, blankCol, newRow, newCol)
+            tentative_g = g[board] + 1
+
+            if visitedState in closed:
+
+                if tentative_g >= g[visitedState]:
+                    continue
+                closed.remove(visitedState)
+                openSet.add(visitedState)
+            elif visitedState in openSet:
+                #already generated: only update if this path is cheaper
+                if tentative_g >= g[visitedState]:
+                    continue
+            else:
+                #never seen before
+                openSet.add(visitedState)
+ 
+            g[visitedState] = tentative_g
+            parent[visitedState] = (board, move)
+            counter += 1
+            heapq.heappush(heap, (tentative_g + h(visitedState), counter, visitedState))
+ 
+        #max size of the queue = size of open
+        maxSize = max(maxSize, len(openSet))
+    # return failure, removed, maxqueue
+    return "failure", "", removed, maxSize
+                
+        
+
+
+
 #Iterative deepening search
 def ids(start, goal, maxDepth=80):
 
@@ -152,6 +232,8 @@ def main():
     startState = json.loads(input('Enter Start State: '))
     goalState = json.loads(input('Enter Goal State:'))
 
+    startState = tuple(tuple(row) for row in startState)
+    goalState = tuple(tuple(row) for row in goalState)
 
     #as it should look
     search = input ('Pick a search method by entering a number: \n (1)BFS \n (2)IDS \n (3)DLS \n (4)Compare all \n')
@@ -161,9 +243,9 @@ def main():
 
     #Breadth First Search
     if search == '1' or search == '(1)':
-        print('You selected Breadth First Search')
+        print('You selected Best First Search')
         startTime = time.process_time()
-        status, path, removed, maxSize = bfs(startState, goalState)
+        status, path, removed, maxSize = bestFirst(startState, goalState)
         elapsed = time.process_time() - startTime
         output(status,len(path), path, removed, maxSize, elapsed)
 
@@ -199,9 +281,9 @@ def main():
         print('You selected to compare all searches')
 
 
-        print('\nBreadth First Search Stats:')
+        print('\nBest First Search Stats:')
         startTime1 = time.process_time()
-        status, path, removed, maxSize = bfs(startState, goalState)
+        status, path, removed, maxSize = bestFirst(startState, goalState)
         elapsed1 = time.process_time() - startTime1
         output(status,len(path), path, removed, maxSize, elapsed1)
 
