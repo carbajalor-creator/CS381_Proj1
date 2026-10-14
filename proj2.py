@@ -271,40 +271,68 @@ def dls(start, goal, limit, table=None):
 
 def main():
 
+
     #json.loads takes out string and turns it into a python list of lists 
     #this allows us to directly pass it to functions
     startState = json.loads(input('Enter Start State: '))
-    goalState = json.loads(input('Enter Goal State:'))
-
+    goalState = json.loads(input('Enter Goal State: '))
+ 
     startState = tuple(tuple(row) for row in startState)
     goalState = tuple(tuple(row) for row in goalState)
-
+ 
+    #the parity check tells us right away if the goal can never be reached
+    solvable = isSolvable(startState, goalState)
+    if not solvable:
+        print('\nThis start/goal pair is unreachable, so no solution exists.')
+ 
+    #one-time cost: build the pattern database for this goal (used by h2 and h3)
+    startTime = time.process_time()
     table = patterDataBase(goalState)
+    print(f'Pattern database built: {len(table)} states, CPU time {time.process_time() - startTime:.3f}')
+ 
     h1 = lambda board: heuristic1(board, goalState)
     h2 = lambda board: heuristic2(board, table)
     h3 = lambda board: max(h1(board), h2(board))
-    #as it should look
-    #search = input ('Pick a search method by entering a number: \n (1)BFS \n (2)IDS \n (3)DLS \n (4)Compare all \n')
+    heuristics = {'1': ('Manhattan Distance Heuristic', h1),
+                  '2': ('Pattern Database Heuristic', h2),
+                  '3': ('Max Heuristic', h3)}
+ 
+    #loop through the options until 4 (halt) is chosen
+    while True:
+        choice = input('\nPick the algorithm(s) to run (any combination of 1, 2, 3, e.g. 123): \n'
+                       ' (1) Best First Search with heuristic 1 \n'
+                       ' (2) Best First Search with heuristic 2 \n'
+                       ' (3) Best First Search with heuristic 3 \n'
+                       ' (4) Halt \n').strip()
+ 
+        if '4' in choice:
+            print('Halting.')
+            break
+ 
+        #run the chosen options in order 1, 2, 3 (ignores repeats and other characters)
+        picks = [c for c in '123' if c in choice]
+        if not picks:
+            print('Invalid choice, please enter 1, 2, 3 or 4.')
+            continue
+ 
+        for c in picks:
+            name, h = heuristics[c]
+            print(f'\nStarting Best First Search with {name}')
+ 
+            if not solvable:
+                output(1, 0, ["none"], 0, 0, 0.0)
+                continue
+ 
+            startTime = time.process_time()
+            status, path, removed, maxSize = bestFirst(startState, goalState, h)
+            elapsed = time.process_time() - startTime
+ 
+            if status == "found":
+                output(0, len(path), path, removed, maxSize, elapsed)
+            else:
+                output(1, 0, ["none"], removed, maxSize, elapsed)
 
-    #max amount a 4x4 grid can search
-    limit = 80 
-    print("Starting Best First Search with Manhattan Distance Heuristic")
-    startTime = time.process_time()
-    status, path, removed, maxSize = bestFirst(startState, goalState, h1)
-    elapsed = time.process_time() - startTime
-    output(status,len(path), path, removed, maxSize, elapsed)
-
-    print("\nStarting Best First Search with Pattern Database Heuristic")
-    startTime2 = time.process_time()
-    status2, path2, removed2, maxSize2 = bestFirst(startState, goalState, h2)
-    elapsed2 = time.process_time() - startTime2
-    output(status2,len(path2), path2, removed2, maxSize2, elapsed2)
-
-    print("\nStarting Best First Search with Max heuristic")
-    startTime3 = time.process_time()
-    status3, path3, removed3, maxSize3 = bestFirst(startState, goalState, h3)
-    elapsed3 = time.process_time() - startTime3
-    output(status3,len(path3), path3, removed3, maxSize3, elapsed3)
+    
     '''
     #Breadth First Search
     if search == '1' or search == '(1)':
